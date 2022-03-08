@@ -9,7 +9,9 @@
 #include <unordered_map>
 #include <vector>
 
+#ifdef MAPPED_FILE_BOOST
 #include <boost/iostreams/device/mapped_file.hpp>
+#endif // MAPPED_FILE_BOOST
 
 #include <getopt.h>
 

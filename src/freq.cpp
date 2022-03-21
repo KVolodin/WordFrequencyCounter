@@ -9,11 +9,10 @@
 #include <unordered_map>
 #include <vector>
 
-#ifdef MAPPED_FILE_BOOST
-#include <boost/iostreams/device/mapped_file.hpp>
-#endif // MAPPED_FILE_BOOST
-
+#include <fcntl.h>
 #include <getopt.h>
+#include <sys/mman.h>
+#include <sys/stat.h>
 
 #include <timer.h>
 
@@ -54,7 +53,6 @@ AppArgs ParseCommanLineArguments(int argc, char* argv[])
             default:
             {
                 throw std::invalid_argument{"Invalid command line argument"};
-                break;
             }
         }
     }
@@ -62,20 +60,36 @@ AppArgs ParseCommanLineArguments(int argc, char* argv[])
     return appArgs;
 }
 
+char* MmapFile(const std::string& in, std::size_t& size)
+{
+    int fdin{0};
+    if (fdin = open(in.c_str(), O_RDONLY); fdin < 0)
+    {
+        throw std::invalid_argument{"Unable to open " + in + " for reading"};
+    }
+    struct stat statbuf{};
+    if (fstat(fdin, &statbuf) < 0)
+    {
+        throw std::invalid_argument{"Fstat error"};
+    }
+    void* src{nullptr};
+    if ((src = mmap(0, statbuf.st_size, PROT_READ, MAP_SHARED, fdin, 0)) == MAP_FAILED)
+    {
+        throw std::invalid_argument{"Error in mmap function"};
+    }
+    size = statbuf.st_size;
+
+    return static_cast<char*>(src);
+}
+
 Dictionary GetDictionary(const std::string& in, const utils::timer::Timer& timer)
 {
     Dictionary dictionary;
-
-#ifdef MAPPED_FILE_BOOST
-    boost::iostreams::mapped_file mmap(in, boost::iostreams::mapped_file::readonly);
-    if (!mmap.is_open())
-    {
-        throw std::invalid_argument{"Input file " + in + "not found"};
-    }
-    auto ch = mmap.const_data();
+    std::size_t size{};
+    auto ch = MmapFile(in, size);
     std::string str;
     str.reserve(10);
-    for (std::size_t i = 0; i < mmap.size(); i++)
+    for (std::size_t i = 0; i < size; i++)
     {
         if (ch[i] >= 0 && ch[i] <= 255 && isalpha(ch[i]) != 0)
         {
@@ -90,36 +104,7 @@ Dictionary GetDictionary(const std::string& in, const utils::timer::Timer& timer
             str.clear();
         }
     }
-#else
-    std::ifstream fileIn{in, std::ios::binary};
-    if (!fileIn.good())
-    {
-        throw std::invalid_argument{"Input file " + in + "not found"};
-    }
 
-    std::string strLine;
-    std::string str;
-    str.reserve(10);
-
-    while (std::getline(fileIn, strLine))
-    {
-        for (const auto ch : strLine)
-        {
-            if (ch >= 0 && ch <= 255 && isalpha(ch) != 0)
-            {
-                str += std::tolower(ch);
-            }
-            else
-            {
-                if (!str.empty())
-                {
-                    dictionary[str] += 1;
-                }
-                str.clear();
-            }
-        }
-    }
-#endif // MAPPED_FILE_BOOST
     std::cout << "Fill: " << timer.Elapsed() << std::endl;
     return dictionary;
 }
